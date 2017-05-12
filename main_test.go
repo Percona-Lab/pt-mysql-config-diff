@@ -244,3 +244,33 @@ func TestProcessParams(t *testing.T) {
 		t.Errorf("Compare base must be cnf. Got %s", opts.compareBase)
 	}
 }
+
+/*
+ System variable values can be set globally at server startup by using
+ options on the command line or in an option file. When you use a
+ startup option to set a variable that takes a numeric value, the value
+ can be given with a suffix of K, M, or G (either uppercase or lowercase)
+ to indicate a multiplier of 1024, 1024^2 or 1024^3; that is,
+ units of kilobytes, megabytes, or gigabytes, respectively.
+
+ https://dev.mysql.com/doc/refman/5.7/en/using-system-variables.html
+*/
+func TestExpandSizes(t *testing.T) {
+	equivalences := map[string]string{
+		"1K":   "1024",
+		"1M":   "1048576",
+		"1G":   "1073741824",
+		"2K":   "2048",
+		"2k":   "2048",
+		"2093": "2093",
+		"3F":   "3F",
+		"NaN":  "NaN",
+		"12.0": "12.0",
+	}
+
+	for left, want := range equivalences {
+		if got := ExpandSizes(left); got != want {
+			t.Errorf("Got: %#v  --  Want: %#v\n", got, want)
+		}
+	}
+}

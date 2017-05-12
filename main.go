@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -208,12 +209,14 @@ func compare(configs []configReader) map[string][]interface{} {
 				continue
 			}
 
+			value1 = ExpandSizes(fmt.Sprintf("%s", value1))
 			// Adjust numbers truncating unnecessary 0s so 10.0 (as string) == 10
 			float1, err := strconv.ParseFloat(fmt.Sprintf("%s", value1), 64)
 			if err == nil {
 				value1 = fmt.Sprintf("%.0f", float1)
 			}
 
+			value2 = ExpandSizes(fmt.Sprintf("%s", value2))
 			float2, err := strconv.ParseFloat(fmt.Sprintf("%s", value2), 64)
 			if err == nil {
 				value2 = fmt.Sprintf("%.0f", float2)
@@ -234,6 +237,25 @@ func compare(configs []configReader) map[string][]interface{} {
 	}
 
 	return diffs
+}
+
+func ExpandSizes(str string) string {
+	re := regexp.MustCompile(`(?i)^(\d*?)([KMG])$`)
+
+	replaceMap := map[string]int64{
+		"K": 1024,
+		"M": 1048576,
+		"G": 1073741824,
+	}
+	if groups := re.FindStringSubmatch(str); len(groups) > 0 {
+		numPart := groups[1]
+		multiplier := replaceMap[strings.ToUpper(groups[2])]
+		i, _ := strconv.ParseInt(numPart, 10, 64)
+
+		return fmt.Sprintf("%d", i*multiplier)
+	}
+
+	return str
 }
 
 func addDiff(diffs map[string][]interface{}, key string, value1, value2 interface{}) {
