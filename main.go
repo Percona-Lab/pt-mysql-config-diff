@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,7 @@ import (
 type options struct {
 	CNFs        []string
 	DSNs        dsnFlags
+	OutputFmt   []string
 	Help        bool
 	compareBase string // First CNF or first MySQL used as comparisson base
 }
@@ -122,8 +124,26 @@ func main() {
 
 	diffs := compare(configs)
 
-	for key, val := range diffs {
-		fmt.Printf("%35s: %40s : %40s\n", key, val[0], val[1])
+	formatter, err := getFormatter(opts.OutputFmt[0])
+	if err != nil {
+		log.Printf("Cannot get output formatter: %s", err.Error())
+		os.Exit(1)
+	}
+
+	formattedOutput, _ := formatter.Format(diffs)
+	fmt.Print(formattedOutput)
+}
+
+func getFormatter(formatter string) (outputFormatter, error) {
+	switch formatter {
+	case "json":
+		return &jsonOutput{}, nil
+	case "prettyJson":
+		return &jsonOutput{prettyStyle: true}, nil
+	case "plain":
+		return &plainOutput{}, nil
+	default:
+		return nil, errors.New("The specified output format doesn't exist")
 	}
 }
 
@@ -249,6 +269,7 @@ func processParams(arguments []string) (*options, error) {
 	fs := flag.NewFlagSet("default", flag.ContinueOnError)
 	fs.StringArrayVarP(&opts.CNFs, "cnf", "c", nil, "cnf file name")
 	fs.VarP(opts.DSNs, "dsn", "d", "full db dsn. Example: user:pass@tcp(127.1:3306)")
+	fs.StringArrayVarP(&opts.OutputFmt, "output", "o", []string{"plain"}, "Output formatting. Could be json, prettyJson or plain.")
 
 	err := fs.Parse(arguments)
 

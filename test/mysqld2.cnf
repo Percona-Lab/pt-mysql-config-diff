@@ -1,0 +1,52 @@
+#
+# The Percona Server 5.7 configuration file.
+#
+# One can use all long options that the program supports.
+# Run program with --help to get a list of available options and with
+# --print-defaults to see which it would actually understand and use.
+#
+# For explanations see
+# http://dev.mysql.com/doc/mysql/en/server-system-variables.html
+
+[mysqld]
+user   = mysql
+pid-file = /var/run/mysqld/mysqld.pid
+socket   = /var/run/mysqld/mysqld.sock
+port   = 3388
+basedir    = /usr
+datadir    = /var/lib/mysql
+tmpdir   = /tmp
+lc-messages-dir  = /usr/share/mysql
+explicit_defaults_for_timestamp
+local-infile=1
+secure-file-priv = ""
+
+# Instead of skip-networking the default is now to listen only on
+# localhost which is more compatible and is not less secure.
+bind-address = 127.0.0.1
+
+log-error    = /var/log/mysql/error.log
+
+# Recommended in standard MySQL setup
+#sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES
+sql_mode=IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+max_allowed_packet=128M
+
+
+# Disabling symbolic-links is recommended to prevent assorted security risks
+symbolic-links=0
+key_buffer_size            = 512M
+innodb_buffer_pool_size    = 512M
+innodb_flush_log_at_trx_commit=2
+slow_query_log_file=/var/log/mysql/slow.log
+log_output='file'
+log_slow_rate_type='query'
+log_slow_rate_limit=100.1234
+long_query_time=0
+log_slow_verbosity='full'
+log_slow_admin_statements=ON
+log_slow_slave_statements=ON
+slow_query_log_use_global_control='all'
+slow_query_log_always_write_time=1
+slow_query_log=OFF
+
