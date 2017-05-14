@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestNumbersNormalizer(t *testing.T) {
 	equivalences := map[string]string{
@@ -36,6 +39,21 @@ func TestSizesNormalizer(t *testing.T) {
 	for left, want := range equivalences {
 		if got := normalizer.Normalize(left); got != want {
 			t.Errorf("Got: %#v  --  Want: %#v\n", got, want)
+		}
+	}
+}
+
+func TestSetsNormalizer(t *testing.T) {
+	equivalences := map[string]string{
+		"IGNORE_SPACE,NO_ZERO_IN_DATE": "NO_ZERO_IN_DATE,IGNORE_SPACE",
+	}
+
+	normalizer := setsNormalizer{}
+	for left, right := range equivalences {
+		left = fmt.Sprintf("%s", normalizer.Normalize(left))
+		right = fmt.Sprintf("%s", normalizer.Normalize(right))
+		if left != right {
+			t.Errorf("Left: %#v  --  Right: %#v\n", left, right)
 		}
 	}
 }

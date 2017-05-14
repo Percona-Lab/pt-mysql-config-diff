@@ -232,6 +232,7 @@ func normalizeValue(str interface{}) interface{} {
 	normalizers := normalizers{
 		&sizesNormalizer{},
 		&numbersNormalizer{},
+		&setsNormalizer{},
 	}
 	for _, n := range normalizers {
 		str = n.Normalize(str)

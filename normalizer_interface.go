@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -45,4 +46,14 @@ func (*numbersNormalizer) Normalize(value interface{}) interface{} {
 		return fmt.Sprintf("%.0f", float1)
 	}
 	return value
+}
+
+type setsNormalizer struct {
+}
+
+func (*setsNormalizer) Normalize(value interface{}) interface{} {
+	splitedValues := strings.Split(fmt.Sprintf("%s", value), ",")
+	sort.Strings(splitedValues)
+
+	return strings.Join(splitedValues, ",")
 }
