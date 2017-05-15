@@ -35,5 +35,5 @@ func (o *plainOutput) Format(diff map[string][]interface{}) (string, error) {
 		buffer.WriteString(fmt.Sprintf("%35s: %40s : %40s\n", key, val[0], val[1]))
 	}
 
-	return string(buffer.String()), nil
+	return buffer.String(), nil
 }

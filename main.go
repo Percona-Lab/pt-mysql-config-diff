@@ -17,7 +17,7 @@ import (
 type options struct {
 	CNFs        []string
 	DSNs        dsnFlags
-	OutputFmt   []string
+	OutputFmt   string
 	Help        bool
 	compareBase string // First CNF or first MySQL used as comparisson base
 }
@@ -124,7 +124,7 @@ func main() {
 
 	diffs := compare(configs)
 
-	formatter, err := getFormatter(opts.OutputFmt[0])
+	formatter, err := getFormatter(opts.OutputFmt)
 	if err != nil {
 		log.Printf("Cannot get output formatter: %s", err.Error())
 		os.Exit(1)
@@ -269,7 +269,7 @@ func processParams(arguments []string) (*options, error) {
 	fs := flag.NewFlagSet("default", flag.ContinueOnError)
 	fs.StringArrayVarP(&opts.CNFs, "cnf", "c", nil, "cnf file name")
 	fs.VarP(opts.DSNs, "dsn", "d", "full db dsn. Example: user:pass@tcp(127.1:3306)")
-	fs.StringArrayVarP(&opts.OutputFmt, "output", "o", []string{"plain"}, "Output formatting. Could be json, prettyJson or plain.")
+	fs.StringVarP(&opts.OutputFmt, "output", "o", "plain", "Output formatting. Could be json, prettyJson or plain.")
 
 	err := fs.Parse(arguments)
 
