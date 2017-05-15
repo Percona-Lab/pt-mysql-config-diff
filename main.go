@@ -122,15 +122,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	diffs := compare(configs)
-
 	formatter, err := getFormatter(opts.OutputFmt)
 	if err != nil {
 		log.Printf("Cannot get output formatter: %s", err.Error())
 		os.Exit(1)
 	}
 
-	formattedOutput, _ := formatter.Format(diffs)
+	diffs := compare(configs)
+
+	formattedOutput, err := formatter.Format(diffs)
+	if err != nil {
+		log.Printf("There was an error formatting differences: %s", err.Error())
+		os.Exit(1)
+	}
+
 	fmt.Print(formattedOutput)
 }
 
