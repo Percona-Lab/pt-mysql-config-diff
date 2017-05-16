@@ -134,7 +134,7 @@ func TestReadCNFs(t *testing.T) {
 			"port":                             "3306",
 			"max_allowed_packet":               "128M",
 			"symbolic-links":                   "0",
-			"key_buffer_size":                  "512M",
+			"key_buffer_size":                  "1024M",
 			"slow_query_log_file":              "/var/log/mysql/slow.log",
 			"slow_query_log_always_write_time": "1",
 		},
