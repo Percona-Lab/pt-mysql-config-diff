@@ -8,16 +8,23 @@ import (
 	"strings"
 )
 
-type normalizer interface {
-	Normalize(interface{}) interface{}
-}
-
+type normalizer func(interface{}) interface{}
 type normalizers []normalizer
 
-type sizesNormalizer struct {
+func Normalize(str interface{}) interface{} {
+	normalizers := normalizers{
+		sizesNormalizer,
+		numbersNormalizer,
+		setsNormalizer,
+	}
+	for _, normalizer := range normalizers {
+		str = normalizer(str)
+	}
+
+	return str
 }
 
-func (*sizesNormalizer) Normalize(value interface{}) interface{} {
+func sizesNormalizer(value interface{}) interface{} {
 	re := regexp.MustCompile(`(?i)^(\d*?)([KMGT])$`)
 
 	replaceMap := map[string]int64{
@@ -37,10 +44,7 @@ func (*sizesNormalizer) Normalize(value interface{}) interface{} {
 	return value
 }
 
-type numbersNormalizer struct {
-}
-
-func (*numbersNormalizer) Normalize(value interface{}) interface{} {
+func numbersNormalizer(value interface{}) interface{} {
 	float1, err := strconv.ParseFloat(fmt.Sprintf("%s", value), 64)
 	if err == nil {
 		return fmt.Sprintf("%.0f", float1)
@@ -48,10 +52,7 @@ func (*numbersNormalizer) Normalize(value interface{}) interface{} {
 	return value
 }
 
-type setsNormalizer struct {
-}
-
-func (*setsNormalizer) Normalize(value interface{}) interface{} {
+func setsNormalizer(value interface{}) interface{} {
 	splitedValues := strings.Split(fmt.Sprintf("%s", value), ",")
 	sort.Strings(splitedValues)
 

@@ -208,8 +208,8 @@ func compare(configs []configReader) map[string][]interface{} {
 				continue
 			}
 
-			value1 = normalizeValue(value1)
-			value2 = normalizeValue(value2)
+			value1 = Normalize(value1)
+			value2 = Normalize(value2)
 
 			if fmt.Sprintf("%s", value1) != fmt.Sprintf("%s", value2) {
 				addDiff(diffs, key, value1, value2)

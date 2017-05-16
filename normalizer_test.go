@@ -13,9 +13,8 @@ func TestNumbersNormalizer(t *testing.T) {
 		"05":       "5",
 	}
 
-	normalizer := numbersNormalizer{}
 	for left, want := range equivalences {
-		if got := normalizer.Normalize(left); got != want {
+		if got := numbersNormalizer(left); got != want {
 			t.Errorf("Got: %#v  --  Want: %#v\n", got, want)
 		}
 	}
@@ -35,9 +34,8 @@ func TestSizesNormalizer(t *testing.T) {
 		"12.0": "12.0",
 	}
 
-	normalizer := sizesNormalizer{}
 	for left, want := range equivalences {
-		if got := normalizer.Normalize(left); got != want {
+		if got := sizesNormalizer(left); got != want {
 			t.Errorf("Got: %#v  --  Want: %#v\n", got, want)
 		}
 	}
@@ -48,10 +46,9 @@ func TestSetsNormalizer(t *testing.T) {
 		"IGNORE_SPACE,NO_ZERO_IN_DATE": "NO_ZERO_IN_DATE,IGNORE_SPACE",
 	}
 
-	normalizer := setsNormalizer{}
 	for left, right := range equivalences {
-		left = fmt.Sprintf("%s", normalizer.Normalize(left))
-		right = fmt.Sprintf("%s", normalizer.Normalize(right))
+		left = fmt.Sprintf("%s", setsNormalizer(left))
+		right = fmt.Sprintf("%s", setsNormalizer(right))
 		if left != right {
 			t.Errorf("Left: %#v  --  Right: %#v\n", left, right)
 		}
