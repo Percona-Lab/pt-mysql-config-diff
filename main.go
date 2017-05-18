@@ -233,16 +233,8 @@ func compare(configs []configReader) map[string][]interface{} {
 				continue
 			}
 
-			// Adjust numbers truncating unnecessary 0s so 10.0 (as string) == 10
-			float1, err := strconv.ParseFloat(fmt.Sprintf("%s", value1), 64)
-			if err == nil {
-				value1 = fmt.Sprintf("%.0f", float1)
-			}
-
-			float2, err := strconv.ParseFloat(fmt.Sprintf("%s", value2), 64)
-			if err == nil {
-				value2 = fmt.Sprintf("%.0f", float2)
-			}
+			value1 = Normalize(value1)
+			value2 = Normalize(value2)
 
 			if fmt.Sprintf("%s", value1) != fmt.Sprintf("%s", value2) {
 				addDiff(diffs, key, value1, value2)
@@ -259,6 +251,19 @@ func compare(configs []configReader) map[string][]interface{} {
 	}
 
 	return diffs
+}
+
+func normalizeValue(str interface{}) interface{} {
+	normalizers := normalizers{
+		&sizesNormalizer{},
+		&numbersNormalizer{},
+		&setsNormalizer{},
+	}
+	for _, n := range normalizers {
+		str = n.Normalize(str)
+	}
+
+	return str
 }
 
 func addDiff(diffs map[string][]interface{}, key string, value1, value2 interface{}) {
