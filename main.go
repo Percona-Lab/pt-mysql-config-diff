@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -122,33 +124,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	formatter, err := getFormatter(opts.OutputFmt)
-	if err != nil {
-		log.Printf("Cannot get output formatter: %s", err.Error())
-		os.Exit(1)
-	}
-
 	diffs := compare(configs)
 
-	formattedOutput, err := formatter.Format(diffs)
+	formattedOutput, err := getFormattedOutput(opts.OutputFmt, diffs)
 	if err != nil {
-		log.Printf("There was an error formatting differences: %s", err.Error())
+		log.Printf("Cannot get output formatter: %s", err.Error())
 		os.Exit(1)
 	}
 
 	fmt.Print(formattedOutput)
 }
 
-func getFormatter(formatter string) (outputFormatter, error) {
-	switch formatter {
-	case "json":
-		return &jsonOutput{}, nil
+func getFormattedOutput(format string, diff map[string][]interface{}) (string, error) {
+	prettyStyle := false
+
+	switch format {
 	case "prettyJson":
-		return &jsonOutput{prettyStyle: true}, nil
+		prettyStyle = true
+		fallthrough
+	case "json":
+		output, err := json.Marshal(diff)
+		if prettyStyle {
+			output, err = json.MarshalIndent(diff, "", "\t")
+		}
+		if err != nil {
+			return "", err
+		}
+
+		return string(output), nil
 	case "plain":
-		return &plainOutput{}, nil
+		var buffer bytes.Buffer
+		for key, val := range diff {
+			buffer.WriteString(fmt.Sprintf("%35s: %40s : %40s\n", key, val[0], val[1]))
+		}
+
+		return buffer.String(), nil
 	default:
-		return nil, errors.New("The specified output format doesn't exist")
+		return "", errors.New("The specified output format doesn't exist")
 	}
 }
 
