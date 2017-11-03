@@ -228,6 +228,39 @@ func TestGetConfigs(t *testing.T) {
 
 }
 
+func TestJsonOutput(t *testing.T) {
+
+	mockConfig1 := &config{
+		configType: "cnf",
+		entries: map[string]interface{}{
+			"key1": "value1",
+			"key2": 2,
+			"key3": true,
+		},
+	}
+
+	mockConfig2 := &config{
+		configType: "cnf",
+		entries: map[string]interface{}{
+			"key1": "value1",
+			"key2": 3,
+			"key4": true,
+		},
+	}
+
+	want := `{"key2":[2,3],"key3":[true,"\u003cMissing\u003e"],"key4":["\u003cMissing\u003e",true]}`
+
+	diff := compare([]configReader{mockConfig1, mockConfig2})
+	jsonFormatter := &jsonOutput{}
+
+	got, _ := jsonFormatter.Format(diff)
+
+	if got != want {
+		t.Errorf("Got:\n%#v\nWant:\n %#v\n", got, diff)
+	}
+
+}
+
 func TestProcessParams(t *testing.T) {
 	args := []string{"--dsn=h=127.1,P=12345,u=user1,p=pass,D=db,t=table", "--cnf=mysqld.conf"}
 	opts, err := processParams(args)

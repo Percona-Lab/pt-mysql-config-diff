@@ -35,6 +35,7 @@ max_allowed_packet=128M
 
 # Disabling symbolic-links is recommended to prevent assorted security risks
 symbolic-links=0
+key_buffer_size            = 512M
 key_buffer_size            = 1G
 innodb_buffer_pool_size    = 512M
 innodb_flush_log_at_trx_commit=2
