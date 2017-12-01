@@ -6,23 +6,26 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Percona-Lab/pt-mysql-config-diff/internal/confreader"
+	tu "github.com/Percona-Lab/pt-mysql-config-diff/testutils"
+	"github.com/kr/pretty"
 	sqlmock "gopkg.in/DATA-DOG/go-sqlmock.v1"
 )
 
 func TestCompareCNFs(t *testing.T) {
 
-	mockConfig1 := &config{
-		configType: "cnf",
-		entries: map[string]interface{}{
+	mockConfig1 := &confreader.Config{
+		ConfigType: "cnf",
+		EntriesMap: map[string]interface{}{
 			"key1": "value1",
 			"key2": 2,
 			"key3": true,
 		},
 	}
 
-	mockConfig2 := &config{
-		configType: "cnf",
-		entries: map[string]interface{}{
+	mockConfig2 := &confreader.Config{
+		ConfigType: "cnf",
+		EntriesMap: map[string]interface{}{
 			"key1": "value1",
 			"key2": 3,
 			"key4": true,
@@ -35,19 +38,19 @@ func TestCompareCNFs(t *testing.T) {
 		"key4": []interface{}{"<Missing>", true},
 	}
 
-	got := compare([]configReader{mockConfig1, mockConfig2})
+	got := compare([]confreader.ConfigReader{mockConfig1, mockConfig2})
 
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Got:\n%#v\nWant:\n %#v\n", got, want)
+		t.Errorf("Got:\n%#v\nWant:\n%#v\n", got, want)
 	}
 
 }
 
 func TestCompareCNFvsMySQL(t *testing.T) {
 
-	mockConfig1 := &config{
-		configType: "cnf",
-		entries: map[string]interface{}{
+	mockConfig1 := &confreader.Config{
+		ConfigType: "cnf",
+		EntriesMap: map[string]interface{}{
 			"key1": "value1",
 			"key2": 2,
 			"key3": true,
@@ -57,9 +60,9 @@ func TestCompareCNFvsMySQL(t *testing.T) {
 	// MySQL SHOW VARIABLES will return ALL variables but we must skip variables in
 	// MySQL config that are missing in the cnf.
 	// In this particular case, key4 should not be included in the diff
-	mockConfig2 := &config{
-		configType: "mysql",
-		entries: map[string]interface{}{
+	mockConfig2 := &confreader.Config{
+		ConfigType: "mysql",
+		EntriesMap: map[string]interface{}{
 			"key1": "value1",
 			"key2": 3,
 			"key4": true,
@@ -71,10 +74,10 @@ func TestCompareCNFvsMySQL(t *testing.T) {
 		"key3": []interface{}{true, "<Missing>"},
 	}
 
-	got := compare([]configReader{mockConfig1, mockConfig2})
+	got := compare([]confreader.ConfigReader{mockConfig1, mockConfig2})
 
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Got:\n%#v\nWant:\n %#v\n", got, want)
+		t.Errorf("Got:\n%#v\nWant:\n%#v\n", got, want)
 	}
 
 }
@@ -99,54 +102,53 @@ func TestAddDiff(t *testing.T) {
 
 func TestReadCNFs(t *testing.T) {
 
-	cnf, err := newCNFReader("some_fake_file")
+	cnf, err := confreader.NewCNFReader("some_fake_file")
 	if err == nil {
 		t.Error("Should return error on invalid files")
 	}
 
-	want := &config{
-		configType: "cnf",
-		entries: map[string]interface{}{
-			"sql_mode":                       "IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
-			"innodb_buffer_pool_size":        "512M",
-			"log_slow_rate_limit":            "100.1234",
-			"log_slow_verbosity":             "full",
-			"basedir":                        "/usr",
-			"innodb_flush_log_at_trx_commit": "2",
-			"log_slow_rate_type":             "query",
-			"log_slow_admin_statements":      "ON",
-			"pid-file":                       "/var/run/mysqld/mysqld.pid",
-			"socket":                         "/var/run/mysqld/mysqld.sock",
-			"bind-address":                   "127.0.0.1",
-			"slow_query_log":                 "OFF",
-			"user":                           "mysql",
-			"log_slow_slave_statements":         "ON",
+	want := &confreader.Config{ConfigType: "cnf",
+		EntriesMap: map[string]interface{}{
+			"basedir":                           "/usr",
+			"bind-address":                      "127.0.0.1",
 			"datadir":                           "/var/lib/mysql",
-			"local-infile":                      "1",
 			"explicit_defaults_for_timestamp":   "true",
-			"secure-file-priv":                  "\"\"",
+			"innodb_buffer_pool_size":           "512M",
+			"innodb_flush_log_at_trx_commit":    "2",
+			"key_buffer_size":                   "512M",
+			"lc-messages-dir":                   "/usr/share/mysql",
+			"local-infile":                      "1",
 			"log-error":                         "/var/log/mysql/error.log",
 			"log_output":                        "file",
+			"log_slow_admin_statements":         "ON",
+			"log_slow_rate_limit":               "100.1234",
+			"log_slow_rate_type":                "query",
+			"log_slow_slave_statements":         "ON",
+			"log_slow_verbosity":                "full",
+			"long_query_time":                   "0",
+			"max_allowed_packet":                "128M",
+			"pid-file":                          "/var/run/mysqld/mysqld.pid",
+			"port":                              "3306",
+			"secure-file-priv":                  "",
+			"slow_query_log":                    "OFF",
+			"slow_query_log_always_write_time":  "1",
+			"slow_query_log_file":               "/var/log/mysql/slow.log",
 			"slow_query_log_use_global_control": "all",
-			"tmpdir":                           "/tmp",
-			"lc-messages-dir":                  "/usr/share/mysql",
-			"long_query_time":                  "0",
-			"port":                             "3306",
-			"max_allowed_packet":               "128M",
-			"symbolic-links":                   "0",
-			"key_buffer_size":                  "512M",
-			"slow_query_log_file":              "/var/log/mysql/slow.log",
-			"slow_query_log_always_write_time": "1",
+			"socket":         "/var/run/mysqld/mysqld.sock",
+			"sql_mode":       "IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+			"symbolic-links": "0",
+			"tmpdir":         "/tmp",
+			"user":           "mysql",
 		},
 	}
-
-	cnf, err = newCNFReader("./test/mysqld.cnf")
+	cnf, err = confreader.NewCNFReader("./test/mysqld.cnf")
 	if err != nil {
 		t.Errorf("Shouldn't return error on existent file: %s", err.Error())
 	}
 
-	if !reflect.DeepEqual(cnf, want) {
-		fmt.Printf("Got:\n%#v\nWant: %#v\n", cnf, want)
+	if !reflect.DeepEqual(cnf.Entries(), want.Entries()) {
+		println(pretty.Diff(cnf.Entries(), want.Entries()))
+		t.Errorf("Got:\n%#v\nWant: %#v\n", cnf, want)
 	}
 
 }
@@ -166,16 +168,16 @@ func TestReadMySQL(t *testing.T) {
 		AddRow("log_slow_rate_limit", "100.1234").
 		AddRow("log_slow_verbosity", "full"))
 
-	want := &config{
-		configType: "mysql",
-		entries: map[string]interface{}{
+	want := &confreader.Config{
+		ConfigType: "mysql",
+		EntriesMap: map[string]interface{}{
 			"innodb_buffer_pool_size": "512M",
 			"log_slow_rate_limit":     "100.1234",
 			"log_slow_verbosity":      "full",
 		},
 	}
 
-	cnf, err := newMySQLReader(db)
+	cnf, err := confreader.NewMySQLReader(db)
 	if err != nil {
 		t.Errorf("Shouldn't return error on mock up db: %s", err.Error())
 	}
@@ -186,61 +188,58 @@ func TestReadMySQL(t *testing.T) {
 
 }
 
-func TestGetConfigs(t *testing.T) {
-
-	opts := &options{
-		CNFs: []string{"./test/mysqld.cnf"},
-		DSNs: []string{"mock:pass@tcp(127.1:3306)/"},
-	}
-
-	mockDBConnector := func(dns string) (*sql.DB, error) {
-		db, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-		}
-
-		columns := []string{"Variable_name", "Value"}
-
-		mock.ExpectQuery("SHOW VARIABLES").WillReturnRows(sqlmock.NewRows(columns).
-			AddRow("innodb_buffer_pool_size", "512M").
-			AddRow("log_slow_rate_limit", "100.1234").
-			AddRow("log_slow_verbosity", "full"))
-
-		return db, nil
-	}
-
-	configs, err := getConfigs(opts, mockDBConnector)
+func TestCnfVsMySQLIntegration(t *testing.T) {
+	db, err := sql.Open("mysql", "root:@tcp(127.1:3306)/")
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer db.Close()
+
+	cnf := &confreader.Config{
+		ConfigType: "cnf",
+		EntriesMap: map[string]interface{}{
+			"innodb_buffer_pool_size": "128M", // default in MySQL: 134217728 = 128M
+			"log_slow_rate_limit":     "100.1234",
+			"log_slow_verbosity":      "full",
+		},
 	}
 
-	if len(configs) != 2 {
-		t.Errorf("There must be 2 configs, got %d", len(configs))
+	myvars, err := confreader.NewMySQLReader(db)
+	if err != nil {
+		t.Errorf("Shouldn't return error on mock up db: %s", err.Error())
 	}
 
-	if configs[0].Type() != "cnf" {
-		t.Errorf("First config should be a cnf file. Got: %s", configs[0].Type())
+	want := map[string][]interface{}{
+		//"innodb_buffer_pool_size": []interface{}{"112M", "134217728"},
+		"log_slow_rate_limit": []interface{}{"100.1234", "<Missing>"},
+		"log_slow_verbosity":  []interface{}{"full", "<Missing>"},
 	}
 
-	if configs[1].Type() != "mysql" {
-		t.Errorf("Second config should be 'mysql'. Got: %s", configs[1].Type())
-	}
-
+	diff := compare([]confreader.ConfigReader{cnf, myvars})
+	tu.Equals(t, diff, want)
 }
 
-func TestProcessParams(t *testing.T) {
-	args := []string{"--dsn=h=127.1,P=12345,u=user1,p=pass,D=db,t=table", "--cnf=mysqld.conf"}
-	opts, err := processParams(args)
-	if err != nil {
-		t.Errorf("Cannot parse params")
-	}
-	if opts.compareBase != "dsn" {
-		t.Errorf("Compare base must be dsn. Got %s", opts.compareBase)
+func TestShowNonDefaults(t *testing.T) {
+	cnf := &confreader.Config{
+		ConfigType: "cnf",
+		EntriesMap: map[string]interface{}{
+			"innodb_buffer_pool_size": "512M", // default in MySQL: 134217728 = 128M
+			"log_slow_rate_limit":     "100.1234",
+			"log_slow_verbosity":      "full",
+			"auto-increment-offset":   2,
+		},
 	}
 
-	args = []string{"--cnf=mysqld.conf", "--dsn=h=127.1,P=12345,u=user1,p=pass,D=db,t=table"}
-	opts, err = processParams(args)
-	if opts.compareBase != "cnf" {
-		t.Errorf("Compare base must be cnf. Got %s", opts.compareBase)
+	defaults, err := confreader.NewDefaultsParser("internal/confreader/testdata/defaults.txt")
+	tu.IsNil(t, err)
+
+	want := map[string][]interface{}{
+		"log_slow_verbosity":      []interface{}{"full", "<Missing>"},
+		"auto-increment-offset":   []interface{}{2, "<Missing>"},
+		"innodb_buffer_pool_size": []interface{}{"536870912", "134217728"},
+		"log_slow_rate_limit":     []interface{}{"100.1234", "<Missing>"},
 	}
+
+	diff := compare([]confreader.ConfigReader{cnf, defaults})
+	tu.Equals(t, diff, want)
 }

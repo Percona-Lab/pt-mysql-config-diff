@@ -2,119 +2,66 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/Percona-Lab/pt-mysql-config-diff/internal/confreader"
+	"github.com/Percona-Lab/pt-mysql-config-diff/ptdsn"
 	_ "github.com/go-sql-driver/mysql"
-	flag "github.com/spf13/pflag"
-	ini "gopkg.in/ini.v1"
+	"github.com/pkg/errors"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-type options struct {
-	CNFs        []string
-	DSNs        dsnFlags
-	Help        bool
-	compareBase string // First CNF or first MySQL used as comparisson base
-}
+var (
+	re = regexp.MustCompile("(?i)(\\d+)([kmg])")
 
-type dsnFlag struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Database string
-	Table    string
-	protocol string
-}
+	app          = kingpin.New("pt-config-diff", "pt-config-diff")
+	cnfs         = app.Arg("cnf", "Config file or DNS in the form h=host,P=port,u=user,p=pass").Strings()
+	outputFormat = app.Flag("format", "Output format: text or json.").Default("text").String()
+	version      = app.Flag("version", "Show version and exit").Bool()
 
-type dsnFlags []dsnFlag
-
-func (d dsnFlags) String() string {
-	parts := []string{}
-
-	//if d.Host != "" {
-	//	parts = append(parts, "h="+d.Host)
-	//}
-	//if d.Port != 0 {
-	//	parts = append(parts, fmt.Sprintf("P=%d", d.Port))
-	//}
-	//if d.User != "" {
-	//	parts = append(parts, "u="+d.User)
-	//}
-	//if d.Password != "" {
-	//	parts = append(parts, "p="+d.Password)
-	//}
-	//if d.Database != "" {
-	//	parts = append(parts, "D="+d.Database)
-	//}
-	//if d.Table != "" {
-	//	parts = append(parts, "t="+d.Table)
-	//}
-
-	return strings.Join(parts, ",")
-}
-
-func (d dsnFlags) Set(value string) error {
-	parts := strings.Split(value, ",")
-
-	var dsn dsnFlag
-	for _, part := range parts {
-		if len(part) < 3 {
-			continue
-		}
-		key := string(part[0])
-		value := string(part[2:])
-		switch key {
-		case "D":
-			dsn.Database = value
-		case "h":
-			dsn.Host = value
-		case "p":
-			dsn.Password = value
-		case "P":
-			port, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				dsn.Port = int(port)
-			}
-		case "t":
-			dsn.Table = value
-		case "u":
-			dsn.User = value
-		}
-	}
-
-	if dsn.Host == "localhost" {
-		dsn.protocol = "unix"
-	} else {
-		dsn.protocol = "tcp"
-	}
-	d = append(d, dsn)
-	return nil
-}
-
-func (d dsnFlags) Type() string {
-	return "dsn"
-}
+	Version   = "0.0.0."
+	Commit    = "<sha1>"
+	Branch    = "branch-name"
+	Build     = "2017-01-01"
+	GoVersion = "1.9.2"
+)
 
 func main() {
-	opts, err := processParams(os.Args[1:])
-	if err != nil {
-		os.Exit(1)
+
+	app.Parse(os.Args[1:])
+
+	if *version {
+		fmt.Printf("Version   : %s\n", Version)
+		fmt.Printf("Commit    : %s\n", Commit)
+		fmt.Printf("Branch    : %s\n", Branch)
+		fmt.Printf("Build     : %s\n", Build)
+		fmt.Printf("Go version: %s\n", GoVersion)
+		return
 	}
 
-	// Make a func to connect to the db, so it can be mocked on tests
+	if *outputFormat != "text" && *outputFormat != "json" {
+		*outputFormat = "text"
+	}
+
+	// To make testing easier because we can pass a function that returns a mock db connection
 	dbConnector := func(dsn string) (*sql.DB, error) {
 		db, err := sql.Open("mysql", dsn)
 		if err != nil {
 			return nil, err
 		}
+		if db.Ping() != nil {
+			return nil, errors.Wrapf(err, "Cannot connect to MySQL at %q", dsn)
+		}
 		return db, nil
 	}
 
-	configs, err := getConfigs(opts, dbConnector)
+	configs, err := getConfigs(*cnfs, dbConnector)
 	if err != nil {
 		log.Printf("Cannot get configs: %s", err.Error())
 		os.Exit(1)
@@ -122,54 +69,39 @@ func main() {
 
 	diffs := compare(configs)
 
+	switch *outputFormat {
+	case "text":
+		printTextDiff(diffs)
+	case "json":
+		printJsonDiff(diffs)
+	}
+
+}
+
+func printTextDiff(diffs map[string][]interface{}) {
+	var keyLen, rightLen, leftLen int
+
 	for key, val := range diffs {
-		fmt.Printf("%35s: %40s : %40s\n", key, val[0], val[1])
-	}
-}
-
-func newCNFReader(filename string) (configReader, error) {
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowBooleanKeys: true}, filename)
-	if err != nil {
-		return nil, err
-	}
-	if cfg == nil {
-		return nil, fmt.Errorf("Invalid file: %s", filename)
-	}
-
-	cnf := &config{configType: "cnf", entries: make(map[string]interface{})}
-
-	for _, key := range cfg.Section("mysqld").Keys() {
-		cnf.entries[key.Name()] = key.Value()
-	}
-
-	return cnf, nil
-}
-
-func newMySQLReader(db *sql.DB) (configReader, error) {
-	// Since the MySQL driver uses a lazy connection, check if we really can
-	// connect to the db
-	if err := db.Ping(); err != nil {
-		return nil, err
-	}
-
-	rows, err := db.Query("SHOW VARIABLES")
-	if err != nil {
-		return nil, err
-	}
-
-	ini := &config{configType: "mysql", entries: make(map[string]interface{})}
-
-	for rows.Next() {
-		var key string
-		var val interface{}
-		err := rows.Scan(&key, &val)
-		if err != nil {
-			continue
+		if l := len(fmt.Sprintf("%v", key)); l > keyLen {
+			keyLen = l
 		}
-
-		ini.entries[key] = val
+		if l := len(fmt.Sprintf("%v", val[0])); l > leftLen && l < 40 {
+			leftLen = l
+		}
+		if l := len(fmt.Sprintf("%v", val[1])); l > rightLen && l < 40 {
+			rightLen = l
+		}
 	}
-	return ini, nil
+	format := fmt.Sprintf("%%%ds: %%%dv <-> %%%dv\n", keyLen, leftLen, rightLen)
+
+	for key, val := range diffs {
+		fmt.Printf(format, key, val[0], val[1])
+	}
+}
+
+func printJsonDiff(diffs map[string][]interface{}) {
+	b, _ := json.MarshalIndent(diffs, "", "  ")
+	fmt.Println(string(b))
 }
 
 /*
@@ -178,150 +110,157 @@ func newMySQLReader(db *sql.DB) (configReader, error) {
 
     cfg1      | cfg2
    -----------+----------
-    key1 = A  | key1 = A
-    key2 = B  | key2 = C
-    key3 = D  |
-              | key4 = E
+    leftkey1 = A  | key1 = A
+    leftkey2 = B  | key2 = C
+    leftkey3 = D  |
+                  | key4 = E
 
-	So we need 2 inner loops: first through cfg1 keys and then through
-	cfg2 keys to be able to compare the keys that exist in cfg2 but are
+	So we need 2 inner loops: first through cfg1 leftkeys and then through
+	cfg2 leftkeys to be able to compare the keys that exist in cfg2 but are
 	missing in cfg1.
 
 	MySQL SHOW VARIABLES will return ALL variables but we must skip variables
 	in MySQL config that are missing in the cnf.
-	In the example above, if cfg2 is "cnf" type, key4 must be included in
+	In the example above, if cfg2 is "cnf" type, leftkey4 must be included in
 	the diff but, if cfg2 type is "mysql", it must be excluded from the diff.
 
 */
-func compare(configs []configReader) map[string][]interface{} {
+func compare(configs []confreader.ConfigReader) map[string][]interface{} {
 	diffs := make(map[string][]interface{})
 
 	if len(configs) < 2 {
 		return nil
 	}
+
 	for i := 1; i < len(configs); i++ {
+		canSkipMissingLeftKey := (configs[0].Type() == "cnf" && configs[i].Type() != "cnf") || configs[0].Type() == "defaults"
 
-		for key, value1 := range configs[0].Entries() {
-			value2, ok := configs[i].Get(key)
-			if !ok && (configs[0].Type() != "mysql" || configs[0].Type() == configs[1].Type()) {
-				addDiff(diffs, key, value1, "<Missing>")
+		canSkipMissingRightKey := (configs[i].Type() == "cnf" && configs[0].Type() != "cnf") || configs[i].Type() == "defaults"
+
+		for leftkey, leftval := range configs[0].Entries() {
+			rightval, ok := configs[i].Get(leftkey)
+			if !ok {
+				if !canSkipMissingRightKey {
+					addDiff(diffs, leftkey, leftval, "<Missing>")
+				}
 				continue
 			}
 
-			// Adjust numbers truncating unnecessary 0s so 10.0 (as string) == 10
-			float1, err := strconv.ParseFloat(fmt.Sprintf("%s", value1), 64)
-			if err == nil {
-				value1 = fmt.Sprintf("%.0f", float1)
-			}
+			leftval = adjustValue(leftval)
+			rightval = adjustValue(rightval)
 
-			float2, err := strconv.ParseFloat(fmt.Sprintf("%s", value2), 64)
-			if err == nil {
-				value2 = fmt.Sprintf("%.0f", float2)
-			}
-
-			if fmt.Sprintf("%s", value1) != fmt.Sprintf("%s", value2) {
-				addDiff(diffs, key, value1, value2)
-				continue
+			if leftval != rightval {
+				addDiff(diffs, leftkey, leftval, rightval)
 			}
 		}
 
-		for key, value1 := range configs[i].Entries() {
-			_, ok := configs[0].Get(key)
-			if !ok && (configs[i].Type() != "mysql" || configs[0].Type() == configs[i].Type()) {
-				addDiff(diffs, key, "<Missing>", value1)
+		if canSkipMissingLeftKey {
+			continue
+		}
+
+		for rightkey, rightval := range configs[i].Entries() {
+			if _, ok := configs[0].Get(rightkey); !ok {
+				addDiff(diffs, rightkey, "<Missing>", rightval)
 			}
 		}
 	}
-
 	return diffs
 }
 
-func addDiff(diffs map[string][]interface{}, key string, value1, value2 interface{}) {
-	if _, ok := diffs[key]; !ok {
-		diffs[key] = append(diffs[key], value1)
+func adjustValue(val interface{}) interface{} {
+	units := map[string]int64{
+		"k": 1024,
+		"m": 1024 * 1024,
+		"g": 1024 * 1024 * 1024,
+		"t": 1024 * 1024 * 1024 * 1024,
 	}
-	diffs[key] = append(diffs[key], value2)
+
+	switch val.(type) {
+	case string:
+		val := fmt.Sprintf("%v", val)
+		// var re = regexp.MustCompile("(?i)(\\d+)([kmg])")
+		if strings.ToLower(val) == "yes" || strings.ToLower(val) == "on" || strings.ToLower(val) == "true" {
+			return 1
+		}
+
+		if strings.ToLower(val) == "no" || strings.ToLower(val) == "off" || strings.ToLower(val) == "false" {
+			return 0
+		}
+
+		if m := re.FindStringSubmatch(val); len(m) == 3 {
+			number, _ := strconv.ParseInt(m[1], 10, 64)
+			multiplier := units[strings.ToLower(m[2])]
+			return fmt.Sprintf("%.0f", float64(number*multiplier))
+		}
+
+		if f, err := strconv.ParseFloat(fmt.Sprintf("%s", val), 64); err == nil {
+			return fmt.Sprintf("%.0f", f)
+		}
+	}
+	return val
 }
 
-func processParams(arguments []string) (*options, error) {
-	opts := &options{}
-
-	fs := flag.NewFlagSet("default", flag.ContinueOnError)
-	fs.StringArrayVarP(&opts.CNFs, "cnf", "c", nil, "cnf file name")
-	fs.VarP(opts.DSNs, "dsn", "d", "full db dsn. Example: user:pass@tcp(127.1:3306)")
-
-	err := fs.Parse(arguments)
-
-	if err != nil {
-		return nil, err
+func addDiff(diffs map[string][]interface{}, leftkey string, leftval, rightval interface{}) {
+	if _, ok := diffs[leftkey]; !ok {
+		diffs[leftkey] = append(diffs[leftkey], leftval)
 	}
-
-	fs.SortFlags = false
-	fs.Visit(func(f *flag.Flag) {
-		if opts.compareBase != "" {
-			return
-		}
-		switch f.Name {
-		case "cnf":
-			opts.compareBase = "cnf"
-		case "dsn":
-			opts.compareBase = "dsn"
-		}
-	})
-
-	return opts, nil
+	diffs[leftkey] = append(diffs[leftkey], rightval)
 }
 
-func getConfigs(opts *options, dbConnector func(string) (*sql.DB, error)) ([]configReader, error) {
-	var configs []configReader
+func getConfigs(cnfs []string, dbConnector func(string) (*sql.DB, error)) ([]confreader.ConfigReader, error) {
+	var configs []confreader.ConfigReader
 
-	cnfs, err := getCNFs(opts.CNFs)
-	if err != nil {
-		return nil, err
-	}
-
-	mysqls, err := getMySQLs(opts.DSNs, dbConnector)
-	if err != nil {
-		return nil, err
-	}
-
-	if opts.compareBase == "mysql" {
-		configs = append(mysqls, cnfs...)
-	} else {
-		configs = append(cnfs, mysqls...)
+	for _, spec := range cnfs {
+		if _, err := os.Stat(spec); err == nil {
+			if cnf, err := getCNF(spec); err == nil {
+				configs = append(configs, cnf)
+			} else {
+				fmt.Println(err.Error())
+			}
+			continue
+		}
+		if cnf, err := getMySQL(spec, dbConnector); err == nil {
+			configs = append(configs, cnf)
+		} else {
+			fmt.Println(err.Error())
+		}
 	}
 
 	return configs, nil
 }
 
-func getCNFs(filenames []string) ([]configReader, error) {
-	var configs []configReader
-
-	for _, filename := range filenames {
-		cfg, err := newCNFReader(filename)
-		if err != nil {
-			return nil, fmt.Errorf("Cannot read %s: %s", filename, err.Error())
-		}
-		configs = append(configs, cfg)
+func getCNF(filename string) (confreader.ConfigReader, error) {
+	cfg, err := confreader.NewCNFReader(filename)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Cannot read %s", filename)
 	}
 
-	return configs, nil
+	if len(cfg.Entries()) == 0 {
+		cfg, err = confreader.NewDefaultsParser(filename)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Cannot read %s", filename)
+		}
+	}
+
+	return cfg, nil
 }
 
-func getMySQLs(dsns dsnFlags, dbConnector func(string) (*sql.DB, error)) ([]configReader, error) {
-	var configs []configReader
+func getMySQL(dsns string, dbConnector func(string) (*sql.DB, error)) (confreader.ConfigReader, error) {
+	dsn := ptdsn.NewPTDSN(dsns)
 
-	for _, dsn := range dsns {
-		db, err := dbConnector(dsn))
-		if err != nil {
-			return nil, fmt.Errorf("Cannot connect to the db %s", err.Error())
-		}
-		cfg, err := newMySQLReader(db)
-		if err != nil {
-			return nil, fmt.Errorf("Cannot read the config variables: %s", err.Error())
-		}
-		configs = append(configs, cfg)
+	db, err := dbConnector(dsn.String())
+	if err != nil {
+		return nil, fmt.Errorf("Cannot connect to the db %s", err.Error())
+	}
+	if db == nil {
+		return nil, fmt.Errorf("Cannot connect to the database on %q", dsns)
+	}
+	defer db.Close()
+
+	cfg, err := confreader.NewMySQLReader(db)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot read the config variables: %s", err.Error())
 	}
 
-	return configs, nil
+	return cfg, nil
 }
